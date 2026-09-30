@@ -9,6 +9,7 @@ Proof of concept: GRAPHLAS is an application that can help with this. It is a gr
 ## Architecture
 
 - `app.py`: the Streamlit-interface
+
 * `trust_engine.py`: Trust scoring
 * `query_parser.py`: Question interpretation
 * `seed_data.py`: Simulated data
@@ -22,12 +23,3 @@ python seed_data.py          # maakt data/*.csv
 cp .env.example .env         # vul daarna GOOGLE_API_KEY in (optioneel)
 streamlit run app.py         # opent http://localhost:8501
 ```
-
-Zonder API-key werkt de app ook: de vraag wordt dan op trefwoorden begrepen.
-
-
-## Unfinished
-
-- Gesimuleerde data en feedback-labels; geen echte bronnen gekoppeld.
-- Geen login of rechtenbeheer.
-- Conflictdetectie gebruikt een vaste "waarde" per document, geen vrije-tekst-NLP.
