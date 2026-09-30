@@ -22,3 +22,9 @@ ipykernel
  
 # Prototype/demo (optioneel, handig voor een snelle web-app)
 streamlit
+
+# Streamlit-extra's voor de demo
+python-dotenv       # API-keys/config uit .env
+requests            # externe API's aanroepen
+streamlit-extras    # handige UI-componenten
+pillow              # afbeeldingen
