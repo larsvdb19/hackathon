@@ -5,6 +5,7 @@ the fixed topic/country lists and then used in fixed, parameterised lookups; no
 LLM-generated queries are ever executed. If the API is missing or fails, a keyword
 matcher is used instead.
 """
+import functools
 import json
 import os
 import re
@@ -82,7 +83,8 @@ def keyword_intent(text):
     return {"topic_id": best(KEYWORDS), "country": country}
 
 
-def _client():
+@functools.lru_cache(maxsize=1)
+def _client():  # cached: a garbage-collected client closes its connection
     from google import genai
     if os.getenv("GOOGLE_API_KEY"):
         return genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
@@ -101,7 +103,7 @@ def llm_intent(text):
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
             temperature=0,
-            http_options=types.HttpOptions(timeout=8000),
+            http_options=types.HttpOptions(timeout=15000),
         ),
     )
     return validate_intent(json.loads(response.text))
