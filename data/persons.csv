@@ -1,0 +1,25 @@
+person_id,name,department,country,role,active
+P01,Sofie Peeters,HR Advisory,BE,Senior HR Advisor,True
+P02,Thomas Maes,HR Advisory,BE,HR Advisor,True
+P03,Lotte de Vries,HR Advisory,NL,HR Advisor,True
+P04,Jonas Becker,HR Advisory,DE,HR Advisor,True
+P05,Emma Claes,HR Advisory,BE,HR Advisor,True
+P06,Pieter Wouters,Payroll,BE,Payroll Specialist,True
+P07,Nina Smit,Payroll,NL,Payroll Specialist,True
+P08,Lukas Schmidt,Payroll,DE,Payroll Specialist,True
+P09,Karel Mertens,Payroll,BE,Payroll Specialist,False
+P10,Ines Jacobs,Payroll,BE,Payroll Specialist,True
+P11,Marie Dubois,Payroll,BE,Payroll Analyst,True
+P12,An Willems,Legal & Compliance,BE,Legal Counsel,True
+P13,Bram Visser,Legal & Compliance,NL,Legal Counsel,True
+P14,Hanna Weber,Legal & Compliance,DE,Legal Counsel,True
+P15,Gert Hermans,Legal & Compliance,BE,Senior Legal Counsel,False
+P16,Laura Goossens,Customer Success,BE,Customer Success Lead,True
+P17,Daan Bakker,Customer Success,NL,Customer Success Manager,True
+P18,Felix Wagner,Customer Success,DE,Customer Success Manager,True
+P19,Yasmine El Amrani,Customer Success,BE,Customer Success Manager,True
+P20,Tom Claessens,Customer Success,BE,Customer Success Manager,True
+P21,Elise Vermeulen,Payroll,BE,Payroll Specialist,True
+P22,Stijn Dewit,Customer Success,BE,Implementation Consultant,True
+P23,Julia Fischer,Legal & Compliance,DE,Legal Counsel,True
+P24,Robin Lambert,HR Advisory,BE,Junior HR Advisor,True
