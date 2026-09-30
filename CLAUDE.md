@@ -15,7 +15,7 @@
 5. **Testen** – happy path met demo-data, edge cases, bugs fixen.
 6. **Pitch + eindproduct** – demo-flow, slides/verhaal, app stabiel en opgeschoond.
 
-Huidige fase: **1 (idee begrijpen + brainstormen)** – opdracht is binnen.
+Huidige fase: **4 (bouwen)** – eerste werkende versie staat (data, trust engine, parser, app). Open: Gemini-key, Aikido-scan, rolverdeling, pitch.
 
 ## Tech stack
 - Python 3.13, **Streamlit** als front-end/demo-app (waarschijnlijk).
@@ -73,6 +73,73 @@ Bron: `context/tectonic-hackathon-participants-guide.pdf` (Tectonic Hackathon, 3
 ## Partner-tools (credits via Discord/Builderbase, optioneel)
 - **Cursor** (coding agent), **ElevenLabs** (text-to-speech, bv. voor demo/voice), **Google Cloud** (GCP-credentials via teamlink in Builderbase, 1 week geldig), **Aikido** (security-audit, verplicht).
 
+## Uitleg voor collega's (zo leg je het uit aan de bazen)
+
+### Het probleem in één zin
+Medewerkers vinden wel documenten, maar weten niet of ze er **op kunnen vertrouwen**: is het actueel, geldt het voor mijn land, spreekt een ander document het tegen, en wie kan ik vragen als ik twijfel?
+
+### Onze oplossing in één zin
+Een zoekapp die bij elk antwoord een **Trust Score (0-100, groen/geel/rood)** toont, **uitlegt waarom**, tegenstrijdige bronnen **zichtbaar** maakt en bij twijfel **de juiste collega** voorstelt.
+
+### Hoe werkt het? (5 stappen, simpel)
+1. **Kennis als netwerk.** We zien de kennis van het bedrijf als een kaart van bolletjes: documenten, mensen en onderwerpen, met lijntjes ertussen ("Sofie schreef dit", "Thomas controleerde dat", "dit document verwijst naar dat document"). Dit heet een **graaf**. Net zoals Obsidian of een stamboom.
+2. **Signalen meten.** Uit dat netwerk en de metadata halen we signalen: Hoe oud is het? Heeft het een eigenaar? Is het gecontroleerd? Werkt de schrijver nog hier? Spreekt het een ander document tegen? Wordt het alleen geciteerd door een kleine kliek?
+3. **Een model leert wat betrouwbaar is.** Een machine-learningmodel (**XGBoost**) leert uit gebruikersfeedback ("dit bleek fout of verouderd") welke signalen samenhangen met onbetrouwbare documenten. Het geeft elk document een score.
+4. **Expertise meewegen.** Via **PageRank** op het personennetwerk zien we wie op een onderwerp écht de expert is (veel geschreven, veel gebruikt, veel door collega's gecontroleerd). Die expertise telt mee in de score (15 procent).
+5. **Uitleggen, niet verbergen.** Bij elk resultaat klap je open: "Dit document is 5 jaar oud, vervangen door een nieuwere versie en spreekt D901 tegen. Toch wordt het veel gelinkt: populair is niet betrouwbaar."
+
+### De Trust Score in gewone woorden
+Score = **85 procent** "hoe betrouwbaar is dit document volgens het model" + **15 procent** "hoe groot is de expertise van de auteur". Geldt het document voor een **ander land** dan gevraagd, dan wordt de score **x0,6** (een Nederlands document is geen antwoord voor België).
+Kleuren: groen vanaf 70, geel vanaf 45, rood eronder.
+
+### Waar gebruiken we AI (LLM)?
+**Alleen om de vraag te begrijpen.** "Hoeveel ouderschapsverlof krijg ik in België?" wordt `{onderwerp: ouderschapsverlof, land: BE}`. Het LLM (Google Gemini) schrijft **geen** databasequeries en **beslist niet** over betrouwbaarheid. De score komt uit ons transparante model. Dat is veiliger (geen injectie), goedkoper, en uitlegbaar. Zonder LLM werkt de app ook, dan zoekt hij op trefwoorden.
+
+### Demo-scenario's (3 minuten)
+1. **"Hoeveel ouderschapsverlof krijg ik in België?"** De app toont een rode banner: bronnen spreken elkaar tegen (3 versus 4 maanden). Het actuele beleid (D901) is groen. Het oude beleid (D902) is rood, terwijl het **het vaakst gelinkt** is. Dat is het kernverhaal: populair is niet betrouwbaar.
+2. **"Wat is de pensioenleeftijd in België?"** Alle bronnen zijn rood, want de schrijver is vertrokken. De app toont: "Vraag het aan **An Willems**". Gert Hermans is wel "expert", maar werkt niet meer hier, dus hij wordt overgeslagen.
+3. **Tab "Kennisgraaf en risico's":** de kaart van documenten (groen/rood, grootte = populariteit), plus onderwerpen met een **bus-factor-risico** (kennis zit bij één persoon), bijvoorbeeld bedrijfswagen en pensioen.
+
+### Hoe past dit bij de jurering?
+- **Fit (30 procent):** precies de trust-vraag uit de challenge: Trust, Detect (conflicten en verouderd) en Connect (expert vinden).
+- **Originaliteit (30 procent):** vertrouwen als score uit een graaf, met uitleg en conflictdetectie. Niet nog een chatbot.
+- **Technical ability (30 procent):** werkende graaf, ML-model, PageRank/TrustRank/communities, Streamlit-app.
+- **Security (10 procent):** geen vrije queries, invoervalidatie, geen secrets in code, Aikido-scan.
+
+### Eerlijke beperkingen (benoem ze zelf in de pitch)
+- **Alle data is gesimuleerd** (349 documenten, 64 personen, 16 onderwerpen, 3 landen). De beleidswaarden zijn illustratief.
+- Het model is getraind op **gesimuleerde feedback**. De score van het model (AUC rond 0,85) zegt dus vooral dat de pipeline werkt, niet hoe goed het in het echt zou zijn. In het echt komt de feedback uit duimpjes en correcties van gebruikers.
+- Conflicten worden gevonden via een "stated value" per document. Echte tekst vergt extra NLP (volgende stap).
+- Geen login/rechtenbeheer in de PoC. In productie zou je zoekresultaten filteren op wat iemand mag zien.
+
+### Verwachte vragen van bazen
+- *Waarom geen gewone AI-chatbot?* Een chatbot vat samen, maar zegt niet of de bron klopt. Wij tonen het vertrouwen en de reden.
+- *Kan dit schalen?* Ja: graafmetrics en scoring zijn batchberekeningen. Bronnen als SharePoint, Confluence en Teams zijn te koppelen, en documenten worden automatisch opnieuw gescoord.
+- *Hoe komt het model aan labels?* In productie: gebruikersfeedback, correcties en reviewresultaten. Nu: gesimuleerd.
+- *Wat als het model het mis heeft?* Daarom altijd de uitleg en de expert-fallback. Mensen blijven beslissen.
+- *Is mijn data veilig?* De LLM ziet enkel de vraag van de gebruiker, geen documenten. Er worden geen queries door het LLM gegenereerd.
+
+### Woordenlijst
+- **Graaf:** netwerk van bolletjes (nodes) en lijntjes (edges).
+- **PageRank:** hoe belangrijk is een bolletje, omdat belangrijke bolletjes ernaar wijzen (zoals Google).
+- **TrustRank:** PageRank die start bij gecontroleerde documenten: vertrouwen "vloeit" via links verder.
+- **Betweenness:** hoe vaak een persoon een brug is tussen anderen (waar kennis afhangt van één persoon).
+- **Louvain/community:** automatisch gevonden groepen, handig om silo's te zien.
+- **Clustering coefficient:** verwijzen de buren van een document vooral naar elkaar (echokamer)?
+- **XGBoost:** ML-model dat uit voorbeelden leert; hier om de kans op "onbetrouwbaar" te voorspellen.
+- **SHAP-achtige uitleg:** hoeveel elk signaal bijdroeg aan een score.
+- **Bus-factor:** als één persoon weggaat, verdwijnt de kennis.
+
+### Bestanden
+| Bestand | Wat |
+|---|---|
+| `seed_data.py` | maakt de gesimuleerde data (`data/*.csv`) en laadt de graaf |
+| `trust_engine.py` | graafmetrics, features, XGBoost, Trust Score, uitleg, expert-suggestie |
+| `query_parser.py` | vraag -> onderwerp en land (Gemini, met trefwoorden als terugval) |
+| `app.py` | Streamlit-interface |
+| `context/` | challenge-guide en het oorspronkelijke ideeplan |
+| `.env` | jouw geheime sleutels (staat NIET op GitHub) |
+
 ## Beslissingen & MVP-scope
 Bron van het idee: `context/ai_system_prompt.txt` (Neo4j-plan), aangepast:
 - **Graaf: `networkx` in-memory, geen Neo4j/Docker.** Nodes `Document`, `Person`, `Topic`; edges `WROTE`, `LINKS_TO`, `REVIEWS`, `BELONGS_TO_TOPIC` (+ `CONFLICTS_WITH`/`SUPERSEDES`). Dummydata uit een seed-script (`seed_data.py`), met bewust ingebouwde conflicten (zelfde topic, ander land/waarde) en verouderde documenten.
@@ -82,5 +149,5 @@ Bron van het idee: `context/ai_system_prompt.txt` (Neo4j-plan), aangepast:
 - UI (Streamlit): zoekbalk, groen/geel/rood badge, uitklapbare uitleg per resultaat, "Informatie onzeker? Vraag het aan [expert]", grafweergave (pyvis) van bronnen en conflicten.
 - Security: geen secrets in code (`.env`), invoervalidatie, geen vrije queries, geen IDOR.
 - Buiten scope: echte data/integraties, login-systeem, Neo4j, echt getrainde productiemodellen.
-- **Data (klaar):** `python seed_data.py` schrijft `data/*.csv`; `from seed_data import load_graph` geeft de networkx-graaf (78 docs, 24 personen, 8 topics). Demo-scenario's: ouderschapsverlof BE (D901-D905), pensioen BE met vertrokken expert (D911-D913), echo chamber bedrijfswagen BE (D921-D926).
+- **Data (klaar):** `python seed_data.py` schrijft `data/*.csv`; `from seed_data import load_graph` geeft de networkx-graaf (349 docs, 64 personen, 16 topics, 3 landen). Demo-scenario's: ouderschapsverlof BE (D901-D905), pensioen BE met vertrokken expert (D911-D913), echo chamber bedrijfswagen BE (D921-D926).
 - Rolverdeling: nog in te vullen.

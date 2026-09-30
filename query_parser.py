@@ -28,6 +28,14 @@ KEYWORDS = {
     "T_pensioen": ["pensioen", "pension", "aow", "rente"],
     "T_gdpr_loon": ["gdpr", "bewaartermijn", "bewaren", "privacy", "retention"],
     "T_klant_onboarding": ["onboarding", "nieuwe klant", "implementatie", "go-live"],
+    "T_dertiende_maand": ["eindejaarspremie", "dertiende maand", "13e maand", "eindejaarsuitkering", "weihnachtsgeld"],
+    "T_maaltijdcheques": ["maaltijdcheque", "maaltijd", "lunch", "essenszuschuss"],
+    "T_overuren": ["overuren", "overwerk", "overtime", "ueberstunden", "extra uren"],
+    "T_opzegtermijn": ["opzegtermijn", "opzeg", "ontslag", "kuendigungsfrist", "notice period"],
+    "T_thuiswerk": ["thuiswerk", "telewerk", "homeoffice", "work from home"],
+    "T_loopbaanonderbreking": ["loopbaanonderbreking", "sabbatical", "tijdskrediet", "career break"],
+    "T_mobiliteitsbudget": ["mobiliteitsbudget", "woon-werk", "reiskosten", "jobticket", "fietsvergoeding"],
+    "T_jaarlijks_verlof": ["jaarlijks verlof", "verlofdagen", "vakantiedagen", "annual leave", "urlaub"],
 }
 COUNTRY_KEYWORDS = {
     "BE": ["belgië", "belgie", "belgium", "belgisch", "vlaanderen"],

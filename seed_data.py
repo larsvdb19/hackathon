@@ -47,6 +47,14 @@ TOPICS = {
     "pensioen": ("Pensioenleeftijd en regeling", "Legal & Compliance"),
     "gdpr_loon": ("Bewaartermijn loonadministratie (GDPR)", "Legal & Compliance"),
     "klant_onboarding": ("Klant-onboarding", "Customer Success"),
+    "dertiende_maand": ("Eindejaarspremie en dertiende maand", "Payroll"),
+    "maaltijdcheques": ("Maaltijdcheques en maaltijdvergoeding", "Payroll"),
+    "overuren": ("Overuren en toeslagen", "HR Advisory"),
+    "opzegtermijn": ("Opzegtermijn bij ontslag", "Legal & Compliance"),
+    "thuiswerk": ("Thuiswerkvergoeding", "HR Advisory"),
+    "loopbaanonderbreking": ("Loopbaanonderbreking en sabbatical", "HR Advisory"),
+    "mobiliteitsbudget": ("Mobiliteitsbudget en woon-werkverkeer", "Payroll"),
+    "jaarlijks_verlof": ("Jaarlijks verlof", "HR Advisory"),
 }
 
 # topic -> country -> (current value, outdated value)
@@ -75,6 +83,30 @@ VALUES = {
     "klant_onboarding": {"BE": ("onboarding in 10 werkdagen", "onboarding in 20 werkdagen"),
                          "NL": ("onboarding in 10 werkdagen", "onboarding in 15 werkdagen"),
                          "DE": ("onboarding in 12 werkdagen", "onboarding in 25 werkdagen")},
+    "dertiende_maand": {"BE": ("eindejaarspremie van 1 maandloon", "eindejaarspremie van 0,5 maandloon"),
+                        "NL": ("eindejaarsuitkering 8,33 procent", "eindejaarsuitkering 4 procent"),
+                        "DE": ("Weihnachtsgeld 50 procent maandsalaris", "Weihnachtsgeld 25 procent maandsalaris")},
+    "maaltijdcheques": {"BE": ("maaltijdcheque max 8 euro per dag", "maaltijdcheque max 6,91 euro per dag"),
+                        "NL": ("maaltijdvergoeding vrijgesteld tot 3 euro", "maaltijdvergoeding vrijgesteld tot 2 euro"),
+                        "DE": ("Essenszuschuss 7,50 euro per dag", "Essenszuschuss 3,10 euro per dag")},
+    "overuren": {"BE": ("overuren met 150 procent toeslag", "overuren met 120 procent toeslag"),
+                 "NL": ("overwerk met 125 procent toeslag", "overwerk met 100 procent toeslag"),
+                 "DE": ("Ueberstunden mit 125 procent Zuschlag", "Ueberstunden mit 100 procent Zuschlag")},
+    "opzegtermijn": {"BE": ("opzegtermijn 3 maanden bij 5 jaar anciennite", "opzegtermijn 2 maanden bij 5 jaar anciennite"),
+                     "NL": ("opzegtermijn 2 maanden", "opzegtermijn 1 maand"),
+                     "DE": ("Kuendigungsfrist 2 Monate", "Kuendigungsfrist 1 Monat")},
+    "thuiswerk": {"BE": ("thuiswerkvergoeding 157 euro per maand", "thuiswerkvergoeding 129 euro per maand"),
+                  "NL": ("thuiswerkvergoeding 2,35 euro per dag", "thuiswerkvergoeding 2 euro per dag"),
+                  "DE": ("Homeoffice-Pauschale 6 euro per dag", "Homeoffice-Pauschale 5 euro per dag")},
+    "loopbaanonderbreking": {"BE": ("loopbaanonderbreking 12 maanden voltijds", "loopbaanonderbreking 6 maanden voltijds"),
+                             "NL": ("sabbatical 6 maanden onbetaald", "sabbatical 3 maanden onbetaald"),
+                             "DE": ("Sabbatical 12 Monate", "Sabbatical 6 Monate")},
+    "mobiliteitsbudget": {"BE": ("mobiliteitsbudget met 3 pijlers", "mobiliteitsbudget met 2 pijlers"),
+                          "NL": ("reiskostenvergoeding 0,23 euro per km", "reiskostenvergoeding 0,19 euro per km"),
+                          "DE": ("Jobticket 49 euro per maand", "Jobticket 9 euro per maand")},
+    "jaarlijks_verlof": {"BE": ("20 verlofdagen bij 5-daagse week", "24 verlofdagen bij 6-daagse week"),
+                         "NL": ("4 keer de werkweek aan verlof", "3 keer de werkweek aan verlof"),
+                         "DE": ("24 werkdagen minimaal verlof", "20 werkdagen minimaal verlof")},
 }
 
 # (person_id, name, department, country, role, active)
@@ -117,6 +149,38 @@ TOPIC_EXPERTS = {
     "klant_onboarding": ["P16", "P19", "P20", "P22"],
 }
 AUTHOR_WEIGHTS = [0.6, 0.25, 0.1, 0.05]
+
+
+def _extend_team():
+    """Add 40 generated colleagues (P25..P64) and experts for the extra topics."""
+    import random
+    rnd = random.Random(SEED)
+    first = ["Lien", "Arne", "Sara", "Wout", "Femke", "Milan", "Noor", "Jelle", "Eva", "Ruben",
+             "Fien", "Seppe", "Tine", "Dries", "Lore", "Matthias", "Sanne", "Koen", "Hannelore", "Bart"]
+    last = ["Verhoeven", "De Smet", "Janssen", "Van den Berg", "Mertens", "Hendrickx", "Aerts", "Bosmans",
+            "Kuipers", "Meijer", "Hoffmann", "Krause", "Vandamme", "Desmet", "Pauwels", "Lemmens",
+            "Jansen", "Koch", "Wuyts", "Coppens"]
+    roles = {"HR Advisory": ["HR Advisor", "HR Business Partner"], "Payroll": ["Payroll Specialist", "Payroll Analyst"],
+             "Legal & Compliance": ["Legal Counsel", "Compliance Officer"],
+             "Customer Success": ["Customer Success Manager", "Implementation Consultant"]}
+    depts = list(roles)
+    names = set()
+    for i in range(25, 65):
+        while True:
+            name = f"{rnd.choice(first)} {rnd.choice(last)}"
+            if name not in names:
+                names.add(name)
+                break
+        dept = depts[i % 4]
+        country = rnd.choices(COUNTRIES, weights=[6, 2, 2])[0]
+        PERSONS.append((f"P{i:02d}", name, dept, country, rnd.choice(roles[dept]), rnd.random() > 0.08))
+    for topic, (_, dept) in TOPICS.items():
+        if topic not in TOPIC_EXPERTS:
+            pool = [p[0] for p in PERSONS if p[2] == dept and p[5]]
+            TOPIC_EXPERTS[topic] = rnd.sample(pool, 3)
+
+
+_extend_team()
 
 DOC_TYPES = ["policy", "manual", "checklist", "chat", "email", "analysis"]
 DOC_TYPE_WEIGHTS = [0.3, 0.25, 0.15, 0.1, 0.1, 0.1]
@@ -177,11 +241,11 @@ def generate():
         for country in COUNTRIES:
             if (topic, country) in HAND_CRAFTED or (topic, country) == ("bedrijfswagen", "BE"):
                 continue
-            for _ in range(int(rng.integers(2, 5))):
+            for _ in range(int(rng.integers(5, 11))):
                 doc_type = str(rng.choice(DOC_TYPES, p=DOC_TYPE_WEIGHTS))
                 age = int(np.clip(rng.gamma(1.5, 350) + 10, 10, 2000))
                 old = rng.random() < 0.1 + 0.6 * min(age / 1500, 1)
-                author = str(rng.choice(experts, p=weights)) if rng.random() > 0.15 \
+                author = str(rng.choice(experts, p=weights)) if (rng.random() > 0.15 or len(experts) <= 2) \
                     else str(rng.choice(persons[persons.active].person_id))
                 informal = doc_type in ("chat", "email")
                 owner = None if rng.random() < (0.4 if informal else 0.12) else author

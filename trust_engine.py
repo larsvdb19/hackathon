@@ -26,7 +26,7 @@ from seed_data import DATA_DIR, REFERENCE_DATE, load_graph
 
 FEATURES = ["age_days", "no_owner", "no_dept", "owner_inactive", "n_reviewers", "version",
             "in_degree", "pagerank", "trustrank", "clustering", "ext_link_ratio",
-            "conflict", "superseded", "sim_max"]
+            "conflict_share", "superseded", "sim_max"]
 MONOTONE = {"age_days": 1, "no_owner": 1, "owner_inactive": 1, "n_reviewers": -1,
             "trustrank": -1, "superseded": 1}
 NICE = {"age_days": "leeftijd", "no_owner": "geen eigenaar", "no_dept": "geen afdeling",
@@ -34,7 +34,7 @@ NICE = {"age_days": "leeftijd", "no_owner": "geen eigenaar", "no_dept": "geen af
         "version": "versienummer", "in_degree": "aantal inkomende links",
         "pagerank": "populariteit (PageRank)", "trustrank": "vertrouwen via links (TrustRank)",
         "clustering": "onderlinge clustering", "ext_link_ratio": "links buiten eigen cluster",
-        "conflict": "conflict met ander document", "superseded": "vervangen door nieuwere versie",
+        "conflict_share": "conflict met andere documenten", "superseded": "vervangen door nieuwere versie",
         "sim_max": "overlap met ander document"}
 EXPERT_WEIGHT = 0.15
 GREEN, YELLOW = 70, 45
@@ -132,12 +132,16 @@ class TrustEngine:
         f["ext_link_ratio"] = [self.ext_ratio[x] for x in d.index]
         f["superseded"] = [int(x in self.superseded_by) for x in d.index]
         # conflict: same topic + country, different stated value
-        self.conflicts = {}
+        # conflict_share = share of the other documents in that group stating a different value
+        self.conflicts, share = {}, {}
         for _, grp in d.groupby(["topic_id", "country"]):
-            if grp.key_value.nunique() > 1:
-                for x in grp.index:
-                    self.conflicts[x] = [y for y in grp.index if grp.key_value[y] != grp.key_value[x]]
-        f["conflict"] = [int(x in self.conflicts) for x in d.index]
+            for x in grp.index:
+                diff = [y for y in grp.index if grp.key_value[y] != grp.key_value[x]]
+                diff.sort(key=lambda y: grp.last_modified[y], reverse=True)
+                share[x] = len(diff) / max(len(grp) - 1, 1)
+                if diff:
+                    self.conflicts[x] = diff
+        f["conflict_share"] = [share[x] for x in d.index]
         # text overlap with other documents on the same topic
         sim = cosine_similarity(TfidfVectorizer().fit_transform(d.text))
         np.fill_diagonal(sim, 0)
@@ -201,8 +205,11 @@ class TrustEngine:
             out.append((1, "Geverifieerd beleid (seed voor TrustRank)"))
         for o in self.superseded_by.get(d, []):
             out.append((-1, f"Vervangen door {o}"))
-        for o in self.conflicts.get(d, []):
+        diff = self.conflicts.get(d, [])
+        for o in diff[:2]:
             out.append((-1, f"Spreekt {o} tegen: '{self.docs.key_value[d]}' versus '{self.docs.key_value[o]}'"))
+        if len(diff) > 2:
+            out.append((-1, f"... en nog {len(diff) - 2} andere documenten met een andere waarde"))
         if x.n_reviewers == 0 and x.ext_link_ratio == 0 and self.doc_graph.degree(d) >= 2:
             out.append((-1, "Echokamer: alleen gelinkt aan documenten in hetzelfde cluster, nooit gereviewd"))
         if x.in_degree >= 4 and row.ml_score < 50:
