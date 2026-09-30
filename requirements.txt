@@ -28,3 +28,12 @@ python-dotenv       # API-keys/config uit .env
 requests            # externe API's aanroepen
 streamlit-extras    # handige UI-componenten
 pillow              # afbeeldingen
+
+# Graaf + LLM
+networkx            # in-memory graaf en PageRank
+pyvis               # interactieve grafweergave in Streamlit
+google-genai        # Gemini via Google Cloud (Vertex AI)
+
+# ML-model en uitleg
+xgboost             # Trust-model
+shap                # bijdrage per feature (uitleg per score)

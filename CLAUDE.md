@@ -73,7 +73,14 @@ Bron: `context/tectonic-hackathon-participants-guide.pdf` (Tectonic Hackathon, 3
 ## Partner-tools (credits via Discord/Builderbase, optioneel)
 - **Cursor** (coding agent), **ElevenLabs** (text-to-speech, bv. voor demo/voice), **Google Cloud** (GCP-credentials via teamlink in Builderbase, 1 week geldig), **Aikido** (security-audit, verplicht).
 
-## Beslissingen & MVP-scope (in te vullen)
-- MVP-kern:
-- Buiten scope:
-- Rolverdeling:
+## Beslissingen & MVP-scope
+Bron van het idee: `context/ai_system_prompt.txt` (Neo4j-plan), aangepast:
+- **Graaf: `networkx` in-memory, geen Neo4j/Docker.** Nodes `Document`, `Person`, `Topic`; edges `WROTE`, `LINKS_TO`, `REVIEWS`, `BELONGS_TO_TOPIC` (+ `CONFLICTS_WITH`/`SUPERSEDES`). Dummydata uit een seed-script (`seed_data.py`), met bewust ingebouwde conflicten (zelfde topic, ander land/waarde) en verouderde documenten.
+- **Trust Score = ML-model (XGBoost, scikit-learn voor pipeline) op metadata- en graaf-features** (decay, completeness, fragmentation/conflict, scope-match) + expert-score van de auteur (PageRank, per topic gepersonaliseerd). Getraind op **gesimuleerde dummydata**; labels = gesimuleerde gebruikersfeedback ("bleek fout/verouderd"). Transparant benoemen als proof of concept. Model moet uitlegbaar blijven (bv. logistic regression/kleine boom + bijdrage per feature).
+- **LLM (Gemini via Google Cloud/Vertex AI): enkel intent-extractie** (`{topic, land, doc_type}` als JSON, gevalideerd tegen vaste lijst) en eventueel korte uitleg op basis van de scores. **Geen text-to-Cypher/vrije queries**; daarna vaste, veilige opzoekingen. Keyword-fallback als de API faalt.
+- Context-aware: de zoekvraag heeft een land/scope; documenten voor een ander land worden afgestraft.
+- UI (Streamlit): zoekbalk, groen/geel/rood badge, uitklapbare uitleg per resultaat, "Informatie onzeker? Vraag het aan [expert]", grafweergave (pyvis) van bronnen en conflicten.
+- Security: geen secrets in code (`.env`), invoervalidatie, geen vrije queries, geen IDOR.
+- Buiten scope: echte data/integraties, login-systeem, Neo4j, echt getrainde productiemodellen.
+- **Data (klaar):** `python seed_data.py` schrijft `data/*.csv`; `from seed_data import load_graph` geeft de networkx-graaf (78 docs, 24 personen, 8 topics). Demo-scenario's: ouderschapsverlof BE (D901-D905), pensioen BE met vertrokken expert (D911-D913), echo chamber bedrijfswagen BE (D921-D926).
+- Rolverdeling: nog in te vullen.

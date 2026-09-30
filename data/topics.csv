@@ -1,0 +1,9 @@
+topic_id,name,department
+T_ouderschapsverlof,Ouderschapsverlof,HR Advisory
+T_ziekteverlof,Ziekteverlof en gewaarborgd loon,HR Advisory
+T_vakantiegeld,Vakantiegeld,Payroll
+T_loonberekening,Loonberekening en cut-off,Payroll
+T_bedrijfswagen,Bedrijfswagen en voordeel alle aard,Payroll
+T_pensioen,Pensioenleeftijd en regeling,Legal & Compliance
+T_gdpr_loon,Bewaartermijn loonadministratie (GDPR),Legal & Compliance
+T_klant_onboarding,Klant-onboarding,Customer Success
