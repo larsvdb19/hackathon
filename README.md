@@ -25,6 +25,9 @@ streamlit run app.py         # opent http://localhost:8501
 
 Zonder API-key werkt de app ook: de vraag wordt dan op trefwoorden begrepen.
 
+## Obsidian graph
+
+The folder `obsidian_vault/` is part of the repo: open it in Obsidian ("Open folder as vault") and use the graph view (Ctrl+G). Regenerate it with `python export_obsidian.py` (after `seed_data.py`).
 
 ## Unfinished
 

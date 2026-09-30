@@ -39,6 +39,7 @@ NICE = {"age_days": "leeftijd", "no_owner": "geen eigenaar", "no_dept": "geen af
 EXPERT_WEIGHT = 0.15
 GREEN, YELLOW = 70, 45
 SCOPE_PENALTY = 0.6
+GENERIC_PENALTY = 0.85
 
 
 def badge(score):
@@ -52,6 +53,7 @@ class TrustEngine:
                                   if a["ntype"] == "Document"]).set_index("doc_id")
         self.persons = pd.DataFrame([{"person_id": n, **a} for n, a in self.g.nodes(data=True)
                                      if a["ntype"] == "Person"]).set_index("person_id")
+        self.client_names = {n: a["name"] for n, a in self.g.nodes(data=True) if a["ntype"] == "Client"}
         self.reviewers = {}
         for u, v, k in self.g.edges(data="etype"):
             if k == "REVIEWS":
@@ -103,9 +105,10 @@ class TrustEngine:
         self.betweenness = nx.betweenness_centrality(pg)
         self.expert = {}
         for topic in self.g.nodes:
-            if self.g.nodes[topic]["ntype"] != "Topic":
+            if self.g.nodes[topic]["ntype"] not in ("Topic", "Client"):
                 continue
-            td = self.docs[self.docs.topic_id == topic]
+            key = "topic_id" if self.g.nodes[topic]["ntype"] == "Topic" else "client"
+            td = self.docs[(self.docs[key] == topic) & (self.docs.client == "" if key == "topic_id" else True)]
             pers = {p: 0.01 for p in self.persons.index}
             for d, row in td.iterrows():
                 pers[row.author_id] += 1.0
@@ -134,7 +137,7 @@ class TrustEngine:
         # conflict: same topic + country, different stated value
         # conflict_share = share of the other documents in that group stating a different value
         self.conflicts, share = {}, {}
-        for _, grp in d.groupby(["topic_id", "country"]):
+        for _, grp in d.groupby(["topic_id", "country", "client"]):
             for x in grp.index:
                 diff = [y for y in grp.index if grp.key_value[y] != grp.key_value[x]]
                 diff.sort(key=lambda y: grp.last_modified[y], reverse=True)
@@ -145,7 +148,7 @@ class TrustEngine:
         # text overlap with other documents on the same topic
         sim = cosine_similarity(TfidfVectorizer().fit_transform(d.text))
         np.fill_diagonal(sim, 0)
-        tv = d.topic_id.to_numpy(dtype=object)
+        tv = (d.topic_id + "|" + d.client).to_numpy(dtype=object)
         same_topic = tv[:, None] == tv[None, :]
         f["sim_max"] = (sim * same_topic).max(axis=1)
         self.X = f[FEATURES]
@@ -160,19 +163,21 @@ class TrustEngine:
         cv = StratifiedKFold(5, shuffle=True, random_state=42)
         oof = cross_val_predict(xgb.XGBClassifier(**params), self.X, y, cv=cv, method="predict_proba")[:, 1]
         self.cv_auc = roc_auc_score(y, oof)
+        self.oof = pd.Series(oof, index=self.X.index)  # out-of-fold predictions, used for honest evaluation
         self.model = xgb.XGBClassifier(**params).fit(self.X, y)
         self.p_unreliable = self.model.predict_proba(self.X)[:, 1]
         contrib = self.model.get_booster().predict(xgb.DMatrix(self.X), pred_contribs=True)
         self.contrib = pd.DataFrame(contrib[:, :-1], index=self.X.index, columns=FEATURES)
 
     def _score(self):
-        s = self.docs[["title", "doc_type", "topic_id", "country", "key_value", "author_id",
+        s = self.docs[["title", "doc_type", "topic_id", "country", "client", "key_value", "author_id",
                        "owner_id", "last_modified", "verified"]].copy()
         s["ml_score"] = 100 * (1 - self.p_unreliable)
         exp = []
         for d, row in s.iterrows():
             a = row.author_id
-            exp.append(self.expert[row.topic_id][a] if self.persons.active[a] else 0.0)
+            ctx = row.client or row.topic_id  # client documents: expertise on that client
+            exp.append(self.expert[ctx][a] if self.persons.active[a] else 0.0)
         s["author_expert"] = exp
         s["trust"] = (1 - EXPERT_WEIGHT) * s.ml_score + EXPERT_WEIGHT * 100 * s.author_expert
         self.scores = s
@@ -195,7 +200,8 @@ class TrustEngine:
             who = self.person_name(row.owner_id or row.author_id)
             out.append((-1, f"{who} werkt niet meer bij het bedrijf"))
         elif row.author_expert >= 0.5:
-            out.append((1, f"Auteur {self.person_name(row.author_id)} is een topexpert op dit onderwerp"))
+            where = f"klant {self.g.nodes[row.client]['name']}" if row.client else "dit onderwerp"
+            out.append((1, f"Auteur {self.person_name(row.author_id)} is een topexpert voor {where}"))
         if x.no_dept:
             out.append((-1, "Geen afdeling toegewezen"))
         revs = self.reviewers.get(d, [])
@@ -224,29 +230,64 @@ class TrustEngine:
         top = c.reindex(c.abs().sort_values(ascending=False).index)[:n]
         return [(NICE[k], -float(v)) for k, v in top.items()]  # minus: log-odds of UNreliable
 
-    def rank(self, doc_ids, country=None):
+    def rank(self, doc_ids, country=None, client=None):
+        """Rank documents. `client` (C_xxx) = the customer the question is about; generic
+        documents then count slightly less than that client's own agreements."""
         res = []
         for d in doc_ids:
             row = self.scores.loc[d]
             t = row.trust * (SCOPE_PENALTY if country and row.country != country else 1.0)
+            extra = []
+            if row.client:
+                extra.append((0, f"Klantspecifiek document voor {self.g.nodes[row.client]['name']}"))
+            elif client:
+                t *= GENERIC_PENALTY
+                extra.append((-1, f"Algemeen beleid: {self.g.nodes[client]['name']} kan afwijkende eigen afspraken hebben (score x{GENERIC_PENALTY})"))
             res.append({"doc_id": d, "title": row.title, "country": row.country, "key_value": row.key_value,
+                        "client": row.client, "extra": extra,
                         "topic_id": row.topic_id, "trust": round(float(t), 1), "badge": badge(t),
-                        "ml_score": round(float(row.ml_score), 1), "reasons": self.reasons(d, country),
+                        "ml_score": round(float(row.ml_score), 1), "reasons": self.reasons(d, country) + extra,
                         "contributions": self.top_contributions(d), "in_scope": not country or row.country == country})
         return sorted(res, key=lambda r: (-r["in_scope"], -r["trust"]))
 
-    def suggest_expert(self, topic_id):
-        """Most expert ACTIVE person for the topic (inactive experts are skipped)."""
-        sc = {p: v for p, v in self.expert[topic_id].items() if self.persons.active[p]}
+    def suggest_expert(self, topic_id, client=None):
+        """Most expert ACTIVE person for the client (if given) or topic; inactive people are skipped."""
+        sc = {p: v for p, v in self.expert[client or topic_id].items() if self.persons.active[p]}
         p = max(sc, key=sc.get)
         r = self.persons.loc[p]
         return {"person_id": p, "name": r["name"], "department": r.department, "role": r.role,
                 "country": r.country, "score": round(sc[p], 2)}
 
+    def evaluate(self):
+        """Is the top-ranked document really a correct one? Uses the hidden ground truth
+        (does the document state the CURRENT value?) and OUT-OF-FOLD model predictions, so the
+        model never scores documents it was trained on. Only groups (topic, country, client)
+        that contain both correct and outdated documents are counted (others are trivial).
+        Baselines: newest document, most linked (PageRank), random pick."""
+        gt = pd.read_csv(DATA_DIR / "ground_truth.csv").set_index("doc_id").states_current_value
+        trust = (1 - EXPERT_WEIGHT) * 100 * (1 - self.oof) + EXPERT_WEIGHT * 100 * self.scores.author_expert
+        pr = pd.Series(self.pagerank)
+        rows = []
+        for (topic, country, client), grp in self.docs.groupby(["topic_id", "country", "client"]):
+            ok = gt[grp.index]
+            if ok.sum() == 0 or ok.sum() == len(grp):
+                continue
+            rows.append({"onderwerp": self.g.nodes[topic]["name"], "land": country,
+                         "klant": self.g.nodes[client]["name"] if client else "-", "documenten": len(grp),
+                         "model": int(ok[trust[grp.index].idxmax()]),
+                         "nieuwste": int(ok[grp.last_modified.idxmax()]),
+                         "meest gelinkt": int(ok[pr[grp.index].idxmax()]),
+                         "willekeurig": float(ok.mean())})
+        per_group = pd.DataFrame(rows)
+        summary = {"groepen": len(per_group),
+                   **{k: float(per_group[k].mean()) for k in ["model", "nieuwste", "meest gelinkt", "willekeurig"]},
+                   "auc_vs_waarheid": float(roc_auc_score(gt[trust.index], trust))}
+        return summary, per_group
+
     def topic_risks(self):
         """Per topic: active authors, share of the top author, bus-factor flag."""
         rows = []
-        for t, td in self.docs.groupby("topic_id"):
+        for t, td in self.docs[self.docs.client == ""].groupby("topic_id"):
             share = td.author_id.value_counts(normalize=True)
             act = [p for p in share.index if self.persons.active[p]]
             rows.append({"topic": self.g.nodes[t]["name"], "documenten": len(td),
