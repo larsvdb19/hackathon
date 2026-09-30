@@ -190,38 +190,38 @@ class TrustEngine:
         """List of (sign, text); sign is +1 (good), -1 (bad) or 0 (info)."""
         x, row, out = self.X.loc[d], self.scores.loc[d], []
         yrs = x.age_days / 365
-        out.append((-1, f"Laatst aangepast {yrs:.1f} jaar geleden") if yrs >= 1.5
-                   else (1, f"Recent aangepast ({int(x.age_days)} dagen geleden)"))
+        out.append((-1, f"Last updated {yrs:.1f} years ago") if yrs >= 1.5
+                   else (1, f"Recently updated ({int(x.age_days)} days ago)"))
         if x.no_owner:
-            out.append((-1, "Geen eigenaar toegewezen"))
+            out.append((-1, "No owner assigned"))
         else:
-            out.append((1, f"Eigenaar: {self.person_name(row.owner_id)}"))
+            out.append((1, f"Owner: {self.person_name(row.owner_id)}"))
         if x.owner_inactive:
             who = self.person_name(row.owner_id or row.author_id)
-            out.append((-1, f"{who} werkt niet meer bij het bedrijf"))
+            out.append((-1, f"{who} no longer works at the company"))
         elif row.author_expert >= 0.5:
-            where = f"klant {self.g.nodes[row.client]['name']}" if row.client else "dit onderwerp"
-            out.append((1, f"Auteur {self.person_name(row.author_id)} is een topexpert voor {where}"))
+            where = f"customer {self.g.nodes[row.client]['name']}" if row.client else "this topic"
+            out.append((1, f"Author {self.person_name(row.author_id)} is a top expert for {where}"))
         if x.no_dept:
-            out.append((-1, "Geen afdeling toegewezen"))
+            out.append((-1, "No department assigned"))
         revs = self.reviewers.get(d, [])
-        out.append((1, "Gereviewd door " + ", ".join(self.person_name(r) for r in revs)) if revs
-                   else (-1, "Nooit gereviewd"))
+        out.append((1, "Reviewed by " + ", ".join(self.person_name(r) for r in revs)) if revs
+                   else (-1, "Never reviewed"))
         if row.verified:
-            out.append((1, "Geverifieerd beleid (seed voor TrustRank)"))
+            out.append((1, "Verified policy (trusted source)"))
         for o in self.superseded_by.get(d, []):
-            out.append((-1, f"Vervangen door {o}"))
+            out.append((-1, f"Replaced by {o}"))
         diff = self.conflicts.get(d, [])
         for o in diff[:2]:
-            out.append((-1, f"Spreekt {o} tegen: '{self.docs.key_value[d]}' versus '{self.docs.key_value[o]}'"))
+            out.append((-1, f"Contradicts {o}: '{self.docs.key_value[d]}' versus '{self.docs.key_value[o]}'"))
         if len(diff) > 2:
-            out.append((-1, f"... en nog {len(diff) - 2} andere documenten met een andere waarde"))
+            out.append((-1, f"... and {len(diff) - 2} more documents stating a different value"))
         if x.n_reviewers == 0 and x.ext_link_ratio == 0 and self.doc_graph.degree(d) >= 2:
-            out.append((-1, "Echokamer: alleen gelinkt aan documenten in hetzelfde cluster, nooit gereviewd"))
+            out.append((-1, "Echo chamber: only linked to documents in the same cluster and never reviewed"))
         if x.in_degree >= 4 and row.ml_score < 50:
-            out.append((-1, f"Veel gelinkt ({int(x.in_degree)}x) maar waarschijnlijk verouderd: populair is niet betrouwbaar"))
+            out.append((-1, f"Linked {int(x.in_degree)} times but probably outdated: popular is not the same as reliable"))
         if country and row.country != country:
-            out.append((-1, f"Geldt voor {row.country}, niet voor {country} (score x{SCOPE_PENALTY})"))
+            out.append((-1, f"Applies to {row.country}, not {country} (score x{SCOPE_PENALTY})"))
         return out
 
     def top_contributions(self, d, n=4):
@@ -239,16 +239,16 @@ class TrustEngine:
             t = row.trust * (SCOPE_PENALTY if country and row.country != country else 1.0)
             extra = []
             if row.client:
-                extra.append((0, f"Klantspecifiek document voor {self.g.nodes[row.client]['name']}"))
+                extra.append((0, f"Customer-specific document for {self.g.nodes[row.client]['name']}"))
             elif client:
                 t *= GENERIC_PENALTY
-                extra.append((-1, f"Algemeen beleid: {self.g.nodes[client]['name']} kan afwijkende eigen afspraken hebben (score x{GENERIC_PENALTY})"))
+                extra.append((-1, f"General policy: {self.g.nodes[client]['name']} may have its own agreements (score x{GENERIC_PENALTY})"))
             res.append({"doc_id": d, "title": row.title, "country": row.country, "key_value": row.key_value,
                         "client": row.client, "extra": extra,
                         "topic_id": row.topic_id, "trust": round(float(t), 1), "badge": badge(t),
                         "ml_score": round(float(row.ml_score), 1), "reasons": self.reasons(d, country) + extra,
                         "contributions": self.top_contributions(d), "in_scope": not country or row.country == country})
-        return sorted(res, key=lambda r: (-r["in_scope"], -r["trust"]))
+        return sorted(res, key=lambda r: -r["trust"])
 
     def suggest_expert(self, topic_id, client=None):
         """Most expert ACTIVE person for the client (if given) or topic; inactive people are skipped."""
@@ -272,16 +272,16 @@ class TrustEngine:
             ok = gt[grp.index]
             if ok.sum() == 0 or ok.sum() == len(grp):
                 continue
-            rows.append({"onderwerp": self.g.nodes[topic]["name"], "land": country,
-                         "klant": self.g.nodes[client]["name"] if client else "-", "documenten": len(grp),
-                         "model": int(ok[trust[grp.index].idxmax()]),
-                         "nieuwste": int(ok[grp.last_modified.idxmax()]),
-                         "meest gelinkt": int(ok[pr[grp.index].idxmax()]),
-                         "willekeurig": float(ok.mean())})
+            rows.append({"topic_id": topic, "country": country,
+                         "customer": self.g.nodes[client]["name"] if client else "-", "documents": len(grp),
+                         "ranking": int(ok[trust[grp.index].idxmax()]),
+                         "newest": int(ok[grp.last_modified.idxmax()]),
+                         "most_linked": int(ok[pr[grp.index].idxmax()]),
+                         "random": float(ok.mean())})
         per_group = pd.DataFrame(rows)
-        summary = {"groepen": len(per_group),
-                   **{k: float(per_group[k].mean()) for k in ["model", "nieuwste", "meest gelinkt", "willekeurig"]},
-                   "auc_vs_waarheid": float(roc_auc_score(gt[trust.index], trust))}
+        summary = {"groups": len(per_group),
+                   **{k: float(per_group[k].mean()) for k in ["ranking", "newest", "most_linked", "random"]},
+                   "auc_vs_truth": float(roc_auc_score(gt[trust.index], trust))}
         return summary, per_group
 
     def topic_risks(self):
@@ -290,10 +290,10 @@ class TrustEngine:
         for t, td in self.docs[self.docs.client == ""].groupby("topic_id"):
             share = td.author_id.value_counts(normalize=True)
             act = [p for p in share.index if self.persons.active[p]]
-            rows.append({"topic": self.g.nodes[t]["name"], "documenten": len(td),
-                         "actieve auteurs": len(act), "top-auteur": self.person_name(share.index[0]),
-                         "aandeel top-auteur": round(float(share.iloc[0]), 2),
-                         "bus-factor risico": len(act) <= 1 or not self.persons.active[share.index[0]]})
+            rows.append({"topic_id": t, "documents": len(td),
+                         "active authors": len(act), "top author": self.person_name(share.index[0]),
+                         "top author share": round(float(share.iloc[0]), 2),
+                         "bus-factor risk": len(act) <= 1 or not self.persons.active[share.index[0]]})
         return pd.DataFrame(rows)
 
 

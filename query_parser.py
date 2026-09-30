@@ -22,22 +22,22 @@ CLIENT_IDS = [f"C_{c}" for c in CLIENTS]
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 KEYWORDS = {
-    "T_ouderschapsverlof": ["ouderschapsverlof", "ouderschap", "parental", "elternzeit", "verlof kind"],
-    "T_ziekteverlof": ["ziekteverlof", "ziek", "gewaarborgd loon", "doorbetaling", "entgeltfortzahlung"],
-    "T_vakantiegeld": ["vakantiegeld", "vakantie", "holiday pay"],
+    "T_ouderschapsverlof": ["parental leave", "maternity", "paternity", "ouderschapsverlof", "ouderschap", "parental", "elternzeit", "verlof kind"],
+    "T_ziekteverlof": ["sick leave", "sick pay", "sickness", "ziekteverlof", "ziek", "gewaarborgd loon", "doorbetaling", "entgeltfortzahlung"],
+    "T_vakantiegeld": ["vacation pay", "vakantiegeld", "vakantie", "holiday pay"],
     "T_loonberekening": ["loonberekening", "cut-off", "cutoff", "loon berekenen", "payroll run"],
-    "T_bedrijfswagen": ["bedrijfswagen", "company car", "voordeel alle aard", "vaa", "bijtelling", "dienstwagen"],
-    "T_pensioen": ["pensioen", "pension", "aow", "rente"],
-    "T_gdpr_loon": ["gdpr", "bewaartermijn", "bewaren", "privacy", "retention"],
-    "T_klant_onboarding": ["onboarding", "nieuwe klant", "implementatie", "go-live"],
-    "T_dertiende_maand": ["eindejaarspremie", "dertiende maand", "13e maand", "eindejaarsuitkering", "weihnachtsgeld"],
-    "T_maaltijdcheques": ["maaltijdcheque", "maaltijd", "lunch", "essenszuschuss"],
+    "T_bedrijfswagen": ["car policy", "benefit in kind", "bedrijfswagen", "company car", "voordeel alle aard", "vaa", "bijtelling", "dienstwagen"],
+    "T_pensioen": ["retirement", "retire", "pensioen", "pension", "aow", "rente"],
+    "T_gdpr_loon": ["data retention", "record keeping", "gdpr", "bewaartermijn", "bewaren", "privacy", "retention"],
+    "T_klant_onboarding": ["customer onboarding", "client onboarding", "onboarding", "nieuwe klant", "implementatie", "go-live"],
+    "T_dertiende_maand": ["year-end bonus", "13th month", "thirteenth month", "eindejaarspremie", "dertiende maand", "13e maand", "eindejaarsuitkering", "weihnachtsgeld"],
+    "T_maaltijdcheques": ["meal voucher", "meal allowance", "maaltijdcheque", "maaltijd", "lunch", "essenszuschuss"],
     "T_overuren": ["overuren", "overwerk", "overtime", "ueberstunden", "extra uren"],
     "T_opzegtermijn": ["opzegtermijn", "opzeg", "ontslag", "kuendigungsfrist", "notice period"],
-    "T_thuiswerk": ["thuiswerk", "telewerk", "homeoffice", "work from home"],
+    "T_thuiswerk": ["remote work", "telework", "home working", "thuiswerk", "telewerk", "homeoffice", "work from home"],
     "T_loopbaanonderbreking": ["loopbaanonderbreking", "sabbatical", "tijdskrediet", "career break"],
-    "T_mobiliteitsbudget": ["mobiliteitsbudget", "woon-werk", "reiskosten", "jobticket", "fietsvergoeding"],
-    "T_jaarlijks_verlof": ["jaarlijks verlof", "verlofdagen", "vakantiedagen", "annual leave", "urlaub"],
+    "T_mobiliteitsbudget": ["mobility budget", "commuting", "commute", "mobiliteitsbudget", "woon-werk", "reiskosten", "jobticket", "fietsvergoeding"],
+    "T_jaarlijks_verlof": ["vacation days", "paid leave", "days off", "jaarlijks verlof", "verlofdagen", "vakantiedagen", "annual leave", "urlaub"],
 }
 COUNTRY_KEYWORDS = {
     "BE": ["belgië", "belgie", "belgium", "belgisch", "vlaanderen"],
@@ -119,23 +119,36 @@ def llm_intent(text):
     return validate_intent(json.loads(response.text))
 
 
+_CACHE = {}  # successful answers only, so a recovered API is picked up again
+
+
 def parse_query(text):
-    """Return {'topic_id', 'country', 'method'}; method is 'llm', 'keyword' or 'none'."""
+    """Return {'topic_id', 'country', 'client', 'method', 'api_ok'}.
+    method is 'llm', 'keyword' or 'none'; api_ok is False when the AI call failed (no key, quota, network)."""
     text = sanitize(text)
     if not text:
-        return {"topic_id": None, "country": None, "client": None, "method": "none"}
+        return {"topic_id": None, "country": None, "client": None, "method": "none", "api_ok": True}
+    if text in _CACHE:
+        return _CACHE[text]
+    api_ok = True
     try:
         intent = llm_intent(text)
         if intent["topic_id"]:
-            # keywords may still fill a country the LLM left empty
+            # keywords may still fill a country/client the LLM left empty
             kw = keyword_intent(text)
             intent["country"] = intent["country"] or kw["country"]
             intent["client"] = intent["client"] or kw["client"]
-            return {**intent, "method": "llm"}
+            result = {**intent, "method": "llm", "api_ok": True}
+            if len(_CACHE) < 500:
+                _CACHE[text] = result
+            return result
     except Exception:
-        pass  # no key, network or bad JSON: use the fallback
+        api_ok = False  # no key, quota, network or bad JSON: use the keyword fallback
     intent = keyword_intent(text)
-    return {**intent, "method": "keyword" if intent["topic_id"] else "none"}
+    result = {**intent, "method": "keyword" if intent["topic_id"] else "none", "api_ok": api_ok}
+    if api_ok and len(_CACHE) < 500:
+        _CACHE[text] = result
+    return result
 
 
 def lookup_documents(graph, intent):
