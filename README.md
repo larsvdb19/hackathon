@@ -28,7 +28,7 @@ GRAPHLAS gives every answer a **Trust Score from 0 to 100**, explains **why** in
 
 ---
 
-## 2. How it works (no graph knowledge needed)
+## 2. How it works 
 
 ### The two key ideas
 **1. A graph** turns the company's knowledge into a map. **2. A machine-learning model** reads that map, together with the documents' own properties, and estimates how reliable each document is.
