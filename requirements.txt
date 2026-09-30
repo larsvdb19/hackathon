@@ -1,0 +1,24 @@
+# Hackathon-omgeving
+# Installeren: pip install -r requirements.txt
+ 
+# Data en analyse
+numpy
+pandas
+scipy
+statsmodels
+openpyxl        # Excel-bestanden lezen (.xlsx)
+ 
+# Visualisatie
+matplotlib
+seaborn
+plotly
+ 
+# Machine learning
+scikit-learn
+ 
+# Notebook
+jupyter
+ipykernel
+ 
+# Prototype/demo (optioneel, handig voor een snelle web-app)
+streamlit
