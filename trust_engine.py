@@ -230,9 +230,10 @@ class TrustEngine:
         top = c.reindex(c.abs().sort_values(ascending=False).index)[:n]
         return [(NICE[k], -float(v)) for k, v in top.items()]  # minus: log-odds of UNreliable
 
-    def rank(self, doc_ids, country=None, client=None):
+    def rank(self, doc_ids, country=None, client=None, adjustments=None):
         """Rank documents. `client` (C_xxx) = the customer the question is about; generic
-        documents then count slightly less than that client's own agreements."""
+        documents then count slightly less than that client's own agreements.
+        `adjustments` = {doc_id: (score delta, [(sign, reason)])}, e.g. colleague feedback."""
         res = []
         for d in doc_ids:
             row = self.scores.loc[d]
@@ -243,10 +244,12 @@ class TrustEngine:
             elif client:
                 t *= GENERIC_PENALTY
                 extra.append((-1, f"General policy: {self.g.nodes[client]['name']} may have its own agreements (score x{GENERIC_PENALTY})"))
+            delta, notes = (adjustments or {}).get(d, (0, []))
+            t = min(100.0, max(0.0, t + delta))
             res.append({"doc_id": d, "title": row.title, "country": row.country, "key_value": row.key_value,
                         "client": row.client, "extra": extra,
                         "topic_id": row.topic_id, "trust": round(float(t), 1), "badge": badge(t),
-                        "ml_score": round(float(row.ml_score), 1), "reasons": self.reasons(d, country) + extra,
+                        "ml_score": round(float(row.ml_score), 1), "reasons": self.reasons(d, country) + extra + notes, "feedback_delta": delta,
                         "contributions": self.top_contributions(d), "in_scope": not country or row.country == country})
         return sorted(res, key=lambda r: -r["trust"])
 

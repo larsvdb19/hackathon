@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 from pyvis.network import Network
 
+import feedback
 from query_parser import lookup_documents, parse_query
 from seed_data import COUNTRIES
 from trust_engine import EXPERT_WEIGHT, GENERIC_PENALTY, GREEN, SCOPE_PENALTY, YELLOW, TrustEngine
@@ -98,6 +99,23 @@ def display_title(engine, d):
     return f"{TYPE_EN[doc.doc_type]}: {TOPIC_EN[doc.topic_id]} ({doc.country}){client} v{doc.version}"
 
 
+def demo_users(engine):
+    """Simulated sign-in. Access to customer documents follows who manages that customer."""
+    managers = {c: m for m, c, k in engine.g.edges(data="etype") if k == "MANAGES_CLIENT"}
+    users = {}
+    for c, p in ((c, managers[c]) for c in engine.client_names if c in managers):
+        label = f"{engine.person_name(p)}, {engine.persons.role[p]} ({engine.client_names[c]})"
+        users[label] = (p, frozenset({c}), False)
+    hr = "P01"
+    users[f"{engine.person_name(hr)}, {engine.persons.role[hr]} (no customer access)"] = (hr, frozenset(), False)
+    users["Knowledge manager (all customers)"] = ("KM", frozenset(engine.client_names), True)
+    return users
+
+
+def cast_vote(engine, allowed, user_id, doc_id, vote):
+    feedback.cast(engine.docs, allowed, user_id, doc_id, vote)
+
+
 def legend():
     chips = "".join(
         f"<span><span class='tk-dot' style='background:{c}'></span><b>{rng}</b>&nbsp; {label}</span>"
@@ -109,7 +127,7 @@ def legend():
                 f"Open &quot;Why this score?&quot; on any result for the details.</span></div>", unsafe_allow_html=True)
 
 
-def render_result(engine, r):
+def render_result(engine, r, user):
     bg, fg, label = STATUS[r["badge"]]
     with st.container(border=True):
         c1, c2 = st.columns([5, 1])
@@ -123,6 +141,18 @@ def render_result(engine, r):
                 f"<li><span class='tk-dot' style='background:{GREEN_HEX if s > 0 else RED if s < 0 else '#9AA5B1'}'></span>"
                 f"{html.escape(text)}</li>" for s, text in r["reasons"])
             st.markdown(f"<ul class='tk-reasons'>{items}</ul>", unsafe_allow_html=True)
+        uid, allowed, _ = user
+        d, mine = r["doc_id"], feedback.user_vote(r["doc_id"], user[0])
+        confirms, flags = feedback.counts(d)
+        b1, b2, b3 = st.columns([1.3, 1.7, 5], vertical_alignment="center")
+        b1.button("Confirmed" if mine == "confirm" else "Confirm", key=f"confirm_{d}", width="stretch",
+                  type="primary" if mine == "confirm" else "secondary",
+                  on_click=cast_vote, args=(engine, allowed, uid, d, "confirm"))
+        b2.button("Flagged" if mine == "flag" else "Flag as wrong", key=f"flag_{d}", width="stretch",
+                  type="primary" if mine == "flag" else "secondary",
+                  on_click=cast_vote, args=(engine, allowed, uid, d, "flag"))
+        b3.markdown(f"<span class='tk-meta'>{confirms} confirmed, {flags} flagged by colleagues. "
+                    f"Feedback moves the score; click again to undo.</span>", unsafe_allow_html=True)
 
 
 def build_graph(engine, doc_ids, with_people=True, height="520px"):
@@ -148,7 +178,7 @@ def build_graph(engine, doc_ids, with_people=True, height="520px"):
     return net.generate_html()
 
 
-def search_tab(engine, country_choice, client_choice):
+def search_tab(engine, country_choice, client_choice, user):
     if "q" not in st.session_state:
         st.session_state.q = ""
     cols = st.columns(len(EXAMPLES))
@@ -173,10 +203,16 @@ def search_tab(engine, country_choice, client_choice):
     country = intent["country"] if country_choice == "Auto-detect" else (None if country_choice == "All" else country_choice)
     client_ids = {v: k for k, v in engine.client_names.items()}
     client = intent["client"] if client_choice == "Auto-detect" else (None if client_choice == "None" else client_ids[client_choice])
+    allowed = user[1]
+    if client and client not in allowed:
+        st.error(f"You do not have access to {engine.client_names[client]} documents. "
+                 "Switch user in the sidebar (demo sign-in) to a person who manages this customer.")
+        return
     st.session_state.last_topic = intent["topic_id"]
     st.caption(f"Understood: {TOPIC_EN[intent['topic_id']]}  |  Country: {country or 'all'}  |  "
                f"Customer: {engine.client_names.get(client, 'none')}  |  Interpreted by: {METHOD[intent['method']]}")
-    ranked = engine.rank(lookup_documents(engine.g, {**intent, "client": client}), country, client)
+    doc_ids = lookup_documents(engine.g, {**intent, "client": client}, allowed)
+    ranked = engine.rank(doc_ids, country, client, {d: feedback.adjustment(d) for d in doc_ids})
     in_scope = [r for r in ranked if r["in_scope"]][:8]
     other = [r for r in ranked if not r["in_scope"]][:5]
     results = in_scope or other
@@ -189,11 +225,11 @@ def search_tab(engine, country_choice, client_choice):
             st.error(f"Sources disagree ({who}{land}): " + "  vs  ".join(sorted(vals)))
     st.markdown("#### Results, highest trust first")
     for r in results:
-        render_result(engine, r)
+        render_result(engine, r, user)
     if in_scope and other:
         with st.expander(f"Documents for other countries ({len(other)})"):
             for r in other:
-                render_result(engine, r)
+                render_result(engine, r, user)
     if not in_scope or max(r["trust"] for r in in_scope) < YELLOW:
         ex = engine.suggest_expert(intent["topic_id"], client)
         st.markdown(f"<div class='tk-expert'><b>Not sure? Ask this expert.</b><br>{html.escape(ex['name'])} &middot; "
@@ -227,7 +263,7 @@ def graph_tab(engine):
     st.dataframe(ex, hide_index=True, width="stretch")
 
 
-def method_tab(engine):
+def method_tab(engine, user):
     st.subheader("How the Trust Score is calculated")
     st.markdown(f"""
 1. **Understand the question.** The topic, country and customer are extracted from the question and checked against fixed lists.
@@ -243,7 +279,11 @@ def method_tab(engine):
                 "That truth is never used to calculate scores. For every group of documents (same topic, country and customer) "
                 "that contains both correct and outdated documents, we check whether the top-ranked one is correct. "
                 "The ranking is scored on documents it was not trained on.")
-    summary, per_group = engine.evaluate()
+    _, per_group = engine.evaluate()
+    visible = {"-"} | {engine.client_names[c] for c in user[1]}
+    per_group = per_group[per_group.customer.isin(visible)]
+    summary = {"groups": len(per_group), **{k: float(per_group[k].mean())
+                                            for k in ["ranking", "newest", "most_linked", "random"]}}
     c = st.columns(4)
     c[0].metric("Our ranking", f"{summary['ranking']:.0%}")
     c[1].metric("Newest document", f"{summary['newest']:.0%}")
@@ -270,18 +310,25 @@ def main():
     st.markdown("<div class='tk-rule'></div>", unsafe_allow_html=True)
     st.markdown("<p class='tk-sub'>Find it. Understand it. Trust it.</p>",
                 unsafe_allow_html=True)
+    users = demo_users(engine)
+    st.sidebar.header("Signed in as")
+    user = users[st.sidebar.selectbox("Demo sign-in", list(users), label_visibility="collapsed")]
+    st.sidebar.caption("Customer documents are only visible to people who manage that customer.")
     st.sidebar.header("Filters")
     country_choice = st.sidebar.selectbox("Country", ["Auto-detect", "All", *COUNTRIES])
-    client_choice = st.sidebar.selectbox("Customer", ["Auto-detect", "None", *engine.client_names.values()])
-    st.sidebar.caption(f"{len(engine.docs)} documents, {len(engine.persons)} people, "
-                       f"{len(engine.client_names)} customers (simulated)")
+    client_choice = st.sidebar.selectbox("Customer", ["Auto-detect", "None",
+                                                      *[engine.client_names[c] for c in engine.client_names if c in user[1]]])
+    st.sidebar.caption(f"{len(engine.docs[engine.docs.client == ''])} general documents, {len(engine.persons)} people, "
+                       f"{len(user[1])} customer(s) accessible (simulated)")
+    if user[2] and st.sidebar.button("Reset colleague feedback"):  # knowledge managers only
+        feedback.reset()
     t1, t2, t3 = st.tabs(["Search", "Knowledge graph", "Method and validation"])
     with t1:
-        search_tab(engine, country_choice, client_choice)
+        search_tab(engine, country_choice, client_choice, user)
     with t2:
         graph_tab(engine)
     with t3:
-        method_tab(engine)
+        method_tab(engine, user)
 
 
 main()

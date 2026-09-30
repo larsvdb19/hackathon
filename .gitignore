@@ -8,3 +8,4 @@ obsidian_vault/.obsidian/app.json
 obsidian_vault/.obsidian/appearance.json
 obsidian_vault/.obsidian/core-plugins*.json
 obsidian_vault/.trash/
+.runtime/
