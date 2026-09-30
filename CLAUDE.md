@@ -107,7 +107,7 @@ Kleuren: groen vanaf 70, geel vanaf 45, rood eronder.
 - **Security (10 procent):** geen vrije queries, invoervalidatie, geen secrets in code, Aikido-scan.
 
 ### Eerlijke beperkingen (benoem ze zelf in de pitch)
-- **Alle data is gesimuleerd** (349 documenten, 64 personen, 16 onderwerpen, 3 landen). De beleidswaarden zijn illustratief.
+- **Alle data is gesimuleerd** (463 documenten, 64 personen, 16 onderwerpen, 4 klanten, 3 landen). De beleidswaarden zijn illustratief.
 - Het model is getraind op **gesimuleerde feedback**. De score van het model (AUC rond 0,85) zegt dus vooral dat de pipeline werkt, niet hoe goed het in het echt zou zijn. In het echt komt de feedback uit duimpjes en correcties van gebruikers.
 - Conflicten worden gevonden via een "stated value" per document. Echte tekst vergt extra NLP (volgende stap).
 - Geen login/rechtenbeheer in de PoC. In productie zou je zoekresultaten filteren op wat iemand mag zien.
@@ -149,5 +149,7 @@ Bron van het idee: `context/ai_system_prompt.txt` (Neo4j-plan), aangepast:
 - UI (Streamlit): zoekbalk, groen/geel/rood badge, uitklapbare uitleg per resultaat, "Informatie onzeker? Vraag het aan [expert]", grafweergave (pyvis) van bronnen en conflicten.
 - Security: geen secrets in code (`.env`), invoervalidatie, geen vrije queries, geen IDOR.
 - Buiten scope: echte data/integraties, login-systeem, Neo4j, echt getrainde productiemodellen.
-- **Data (klaar):** `python seed_data.py` schrijft `data/*.csv`; `from seed_data import load_graph` geeft de networkx-graaf (349 docs, 64 personen, 16 topics, 3 landen). Demo-scenario's: ouderschapsverlof BE (D901-D905), pensioen BE met vertrokken expert (D911-D913), echo chamber bedrijfswagen BE (D921-D926).
+- **Data (klaar):** `python seed_data.py` schrijft `data/*.csv`; `from seed_data import load_graph` geeft de networkx-graaf (463 docs, 64 personen, 16 topics, 4 klanten, 3 landen). Demo-scenario's: ouderschapsverlof BE (D901-D905), pensioen BE met vertrokken expert (D911-D913), echo chamber bedrijfswagen BE (D921-D926), Nike cut-off BE waar de klantafspraak het standaardbeleid overschrijft (D931-D933).
+- **Klanten (Nike, AS Adventure, Decathlon, Zalando):** klantspecifieke documenten met afwijkende afspraken. Vertrouwelijkheid: klantdocumenten worden alleen getoond als de vraag die klant noemt. Bij een klantvraag tellen algemene documenten x0,85.
+- **Validatie:** `TrustEngine.evaluate()` (tab "Validatie en methode"): is de nummer 1 per groep een document met de actuele waarde? Out-of-fold model vs nieuwste document vs meest gelinkt vs willekeurig. De AUC in de app is één modelgetal, geen score per vraag.
 - Rolverdeling: nog in te vullen.

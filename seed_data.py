@@ -7,9 +7,10 @@ Run `python seed_data.py` to (re)generate the CSV files in `data/`:
 Other modules use `load_graph()` to get a networkx MultiDiGraph.
 
 Graph model
-    nodes:  Person (P01..), Document (D001..), Topic (T_<name>); node attr `ntype`
+    nodes:  Person (P01..), Document (D001..), Topic (T_<name>), Client (C_<name>); node attr `ntype`
     edges:  WROTE (person->doc), REVIEWS (person->doc), LINKS_TO (doc->doc),
-            BELONGS_TO_TOPIC (doc->topic), SUPERSEDES (newer doc->older doc); edge attr `etype`
+            BELONGS_TO_TOPIC (doc->topic), SUPERSEDES (newer doc->older doc),
+            ABOUT_CLIENT (doc->client), MANAGES_CLIENT (person->client); edge attr `etype`
     LINKS_TO is sometimes reciprocal (Obsidian-style backlinks).
 
 `feedback.csv` = simulated user feedback (views, "wrong/outdated" flags) used as
@@ -23,6 +24,7 @@ Planted demo scenarios (fixed ids)
                contradicts the policy, correct-but-stale ownerless manual.
     D911-D913  pensioen BE: every doc old, author P15 has LEFT the company;
                only P12 (active reviewer) can still be asked -> expert fallback demo.
+    D931-D933  Nike loonberekening BE: client agreement (15th) overrides the standard (20th).
     D921-D926  bedrijfswagen BE: echo chamber of chats/mails that only link each other.
     bedrijfswagen overall: single expert P06 (bus-factor risk).
 """
@@ -182,6 +184,46 @@ def _extend_team():
 
 _extend_team()
 
+# client_id -> (name, countries, account manager person_id). Fictional agreements, simulated data.
+CLIENTS = {
+    "nike": ("Nike", ["BE", "NL"], "P16"),
+    "as_adventure": ("AS Adventure", ["BE"], "P19"),
+    "decathlon": ("Decathlon", ["BE"], "P20"),
+    "zalando": ("Zalando", ["DE", "NL"], "P18"),
+}
+# client -> topic -> (current value, outdated value): client-specific agreements that
+# deviate from the standard policy
+CLIENT_VALUES = {
+    "nike": {
+        "loonberekening": ("cut-off op de 15e (afspraak Nike)", "cut-off op de 12e (afspraak Nike)"),
+        "bedrijfswagen": ("enkel CO2-neutrale bedrijfswagens voor Nike-managers", "brandstofwagens toegelaten voor Nike-managers"),
+        "thuiswerk": ("Nike thuiswerkvergoeding 180 euro per maand", "Nike thuiswerkvergoeding 150 euro per maand"),
+        "overuren": ("Nike retail overuren met 175 procent toeslag", "Nike retail overuren met 150 procent toeslag"),
+        "dertiende_maand": ("Nike eindejaarspremie van 1,5 maandloon", "Nike eindejaarspremie van 1 maandloon"),
+    },
+    "as_adventure": {
+        "loonberekening": ("cut-off op de 25e (afspraak AS Adventure)", "cut-off op de 20e (afspraak AS Adventure)"),
+        "maaltijdcheques": ("AS Adventure maaltijdcheque 8 euro per dag", "AS Adventure maaltijdcheque 6 euro per dag"),
+        "jaarlijks_verlof": ("AS Adventure 22 verlofdagen bij 5-daagse week", "AS Adventure 20 verlofdagen bij 5-daagse week"),
+        "overuren": ("AS Adventure seizoenspersoneel overuren met 160 procent toeslag", "AS Adventure seizoenspersoneel overuren met 130 procent toeslag"),
+        "klant_onboarding": ("AS Adventure onboarding in 7 werkdagen", "AS Adventure onboarding in 14 werkdagen"),
+    },
+    "decathlon": {
+        "loonberekening": ("cut-off op de 18e (afspraak Decathlon)", "cut-off op de 22e (afspraak Decathlon)"),
+        "thuiswerk": ("Decathlon thuiswerkvergoeding 140 euro per maand", "Decathlon thuiswerkvergoeding 100 euro per maand"),
+        "bedrijfswagen": ("Decathlon geen bedrijfswagens, mobiliteitsbudget verplicht", "Decathlon bedrijfswagens voor filiaalmanagers"),
+        "mobiliteitsbudget": ("Decathlon mobiliteitsbudget 3000 euro per jaar", "Decathlon mobiliteitsbudget 2000 euro per jaar"),
+        "maaltijdcheques": ("Decathlon maaltijdcheque 7 euro per dag", "Decathlon maaltijdcheque 5 euro per dag"),
+    },
+    "zalando": {
+        "loonberekening": ("cut-off op de 20e (afspraak Zalando)", "cut-off op de 28e (afspraak Zalando)"),
+        "thuiswerk": ("Zalando Homeoffice-Pauschale 8 euro per dag", "Zalando Homeoffice-Pauschale 6 euro per dag"),
+        "overuren": ("Zalando Ueberstunden 130 procent Zuschlag", "Zalando Ueberstunden 110 procent Zuschlag"),
+        "jaarlijks_verlof": ("Zalando 30 Urlaubstage", "Zalando 28 Urlaubstage"),
+        "klant_onboarding": ("Zalando onboarding in 5 werkdagen", "Zalando onboarding in 10 werkdagen"),
+    },
+}
+
 DOC_TYPES = ["policy", "manual", "checklist", "chat", "email", "analysis"]
 DOC_TYPE_WEIGHTS = [0.3, 0.25, 0.15, 0.1, 0.1, 0.1]
 DOC_TYPE_LABEL = {"policy": "Beleid", "manual": "Handleiding", "checklist": "Checklist",
@@ -198,6 +240,7 @@ OFFICIAL = ("policy", "manual")
 
 # (topic, country) combos that are fully hand-crafted below
 HAND_CRAFTED = {("ouderschapsverlof", "BE"), ("pensioen", "BE")}
+HAND_CRAFTED_CLIENT = {("nike", "loonberekening", "BE")}
 
 
 def _sigmoid(x):
@@ -217,19 +260,21 @@ def generate():
     counter = iter(range(1, 900))
 
     def add_doc(doc_id, topic, country, doc_type, age_days, old, author, owner, dept,
-                verified=False, version=1):
+                verified=False, version=1, client=""):
         name = TOPICS[topic][0]
-        value = VALUES[topic][country][1 if old else 0]
+        value = (CLIENT_VALUES[client][topic] if client else VALUES[topic][country])[1 if old else 0]
+        cname = CLIENTS[client][0] if client else ""
         modified = REFERENCE_DATE - pd.Timedelta(days=int(age_days))
         created = modified - pd.Timedelta(days=int(rng.integers(0, 400)) if version > 1 else 0)
         docs.append({
             "doc_id": doc_id,
-            "title": f"{DOC_TYPE_LABEL[doc_type]}: {name} ({country}) v{version}",
+            "title": f"{DOC_TYPE_LABEL[doc_type]}: {name} ({country})" + (f" - {cname}" if client else "") + f" v{version}",
             "doc_type": doc_type, "topic_id": f"T_{topic}", "country": country,
+            "client": f"C_{client}" if client else "",
             "department": dept or "", "author_id": author, "owner_id": owner or "",
             "created": created.date().isoformat(), "last_modified": modified.date().isoformat(),
             "version": version, "key_value": value, "verified": bool(verified),
-            "text": f"{name} ({country}). Regel: {value}. {FILLER[doc_type]}",
+            "text": f"{name} ({country})" + (f" voor klant {cname}" if client else "") + f". Regel: {value}. {FILLER[doc_type]}",
         })
         truth[doc_id] = bool(old)
 
@@ -252,6 +297,32 @@ def generate():
                 dept = None if rng.random() < 0.15 else home_dept
                 add_doc(f"D{next(counter):03d}", topic, country, doc_type, age, old,
                         author, owner, dept, version=int(rng.integers(1, 4)))
+
+    # ---- client-specific documents -----------------------------------------------
+    cs_pool = [str(p) for p in persons[(persons.department == "Customer Success") & persons.active].person_id]
+    for client, (cname, ccountries, manager) in CLIENTS.items():
+        for topic in CLIENT_VALUES[client]:
+            for country in ccountries:
+                if (client, topic, country) in HAND_CRAFTED_CLIENT:
+                    continue
+                for _ in range(int(rng.integers(3, 6))):
+                    doc_type = str(rng.choice(DOC_TYPES, p=DOC_TYPE_WEIGHTS))
+                    age = int(np.clip(rng.gamma(1.5, 350) + 10, 10, 2000))
+                    old = rng.random() < 0.1 + 0.6 * min(age / 1500, 1)
+                    author = manager if rng.random() < 0.6 else str(rng.choice(cs_pool))
+                    owner = None if rng.random() < (0.4 if doc_type in ("chat", "email") else 0.12) else author
+                    dept = None if rng.random() < 0.15 else "Customer Success"
+                    add_doc(f"D{next(counter):03d}", topic, country, doc_type, age, old, author, owner, dept,
+                            version=int(rng.integers(1, 4)), client=client)
+
+    # ---- hero 4: Nike cut-off BE (client agreement overrides the standard) -----
+    cd = "Customer Success"
+    add_doc("D931", "loonberekening", "BE", "policy", 60, False, "P16", "P16", cd, True, 2, client="nike")
+    add_doc("D932", "loonberekening", "BE", "policy", 700, True, "P16", "P16", cd, False, 1, client="nike")
+    add_doc("D933", "loonberekening", "BE", "chat", 400, True, "P22", None, None, False, 1, client="nike")
+    reviews |= {("P12", "D931"), ("P11", "D931"), ("P12", "D932")}
+    supersedes.add(("D931", "D932"))
+    links |= {("D933", "D932"), ("D932", "D931")}
 
     # ---- hero 1: ouderschapsverlof BE ----------------------------------------
     hd = "HR Advisory"
@@ -288,14 +359,21 @@ def generate():
     by_id = df.set_index("doc_id")
 
     # ---- reviews and verification (procedural docs) ---------------------------
-    hand_ids = {"D901", "D902", "D903", "D904", "D905", "D911", "D912", "D913"} | set(echo_ids)
+    hand_ids = {"D901", "D902", "D903", "D904", "D905", "D911", "D912", "D913",
+                "D931", "D932", "D933"} | set(echo_ids)
+
+    def experts_of(row):
+        if row.client:
+            return [CLIENTS[row.client[2:]][2], "P12"]  # account manager + legal counsel
+        return TOPIC_EXPERTS[row.topic_id[2:]]
+
     for row in df.itertuples():
         if row.doc_id in hand_ids:
             continue
         topic = row.topic_id[2:]
         p_review = 0.75 if row.doc_type in OFFICIAL else 0.05
         if rng.random() < p_review:
-            pool = [p for p in TOPIC_EXPERTS[topic] if p != row.author_id and active[p]]
+            pool = [p for p in experts_of(row) if p != row.author_id and active[p]]
             if not pool:
                 pool = [p for p in persons.person_id if active[p] and p != row.author_id
                         and person_dept[p] == TOPICS[topic][1]]
@@ -307,8 +385,7 @@ def generate():
     for i, row in df.iterrows():
         if row.doc_id in hand_ids:
             continue
-        topic = row.topic_id[2:]
-        expert_review = any(p in TOPIC_EXPERTS[topic] for p in reviewer_of.get(row.doc_id, []))
+        expert_review = any(p in experts_of(row) for p in reviewer_of.get(row.doc_id, []))
         df.at[i, "verified"] = bool(row.doc_type in OFFICIAL and expert_review
                                     and row.age_days_ < 500 and not truth[row.doc_id])
 
@@ -316,15 +393,21 @@ def generate():
     pool_ids = [d for d in df.doc_id if d not in echo_ids]
     topic_of = dict(zip(df.doc_id, df.topic_id))
     dept_of = dict(zip(df.doc_id, df.department))
+    client_of = dict(zip(df.doc_id, df.client))
+    generic_ids = [d for d in pool_ids if not client_of[d]]
     for d in pool_ids:
+        # generic docs never link to client docs; client docs link to generic docs and their own client
+        allowed = generic_ids + ([x for x in pool_ids if client_of[x] == client_of[d]] if client_of[d] else [])
         for _ in range(int(rng.integers(0, 5))):
             r = rng.random()
-            if r < 0.6:
-                cand = [x for x in pool_ids if topic_of[x] == topic_of[d]]
+            if client_of[d] and r < 0.5:
+                cand = [x for x in allowed if client_of[x] == client_of[d]]
+            elif r < 0.6 or (client_of[d] and r < 0.75):
+                cand = [x for x in allowed if topic_of[x] == topic_of[d]]
             elif r < 0.8 and dept_of[d]:
-                cand = [x for x in pool_ids if dept_of[x] == dept_of[d]]
+                cand = [x for x in allowed if dept_of[x] == dept_of[d]]
             else:
-                cand = pool_ids
+                cand = allowed
             cand = [x for x in cand if x != d]
             if not cand:
                 continue
@@ -333,14 +416,15 @@ def generate():
             if rng.random() < 0.25:
                 links.add((c, d))
     # the outdated hero policy stays popular: other docs keep linking to it
-    others = [d for d in pool_ids if topic_of[d] == "T_ouderschapsverlof" and d not in hand_ids]
+    others = [d for d in pool_ids if topic_of[d] == "T_ouderschapsverlof" and d not in hand_ids
+              and not client_of[d]]
     for d in others[:4]:
         links.add((d, "D902"))
     if others:
         links.add((others[-1], "D901"))
 
     # ---- supersedes between versions of the same (topic, country) -------------
-    for _, g in df[~df.doc_id.isin(hand_ids | set(echo_ids))].groupby(["topic_id", "country"]):
+    for _, g in df[~df.doc_id.isin(hand_ids | set(echo_ids))].groupby(["topic_id", "country", "client"]):
         g = g.sort_values("last_modified")
         newest = g.iloc[-1]
         if truth[newest.doc_id]:
@@ -355,6 +439,8 @@ def generate():
     rows += [(a, b, "LINKS_TO") for a, b in sorted(links) if a != b]
     rows += [(d, t, "BELONGS_TO_TOPIC") for d, t in zip(df.doc_id, df.topic_id)]
     rows += [(a, b, "SUPERSEDES") for a, b in sorted(supersedes)]
+    rows += [(d, c, "ABOUT_CLIENT") for d, c in zip(df.doc_id, df.client) if c]
+    rows += [(m, f"C_{k}", "MANAGES_CLIENT") for k, (_, _, m) in CLIENTS.items()]
     edges = pd.DataFrame(rows, columns=["source", "target", "type"])
 
     # ---- simulated user feedback => training label ----------------------------
@@ -374,7 +460,11 @@ def generate():
 
     topics = pd.DataFrame([(f"T_{k}", v[0], v[1]) for k, v in TOPICS.items()],
                           columns=["topic_id", "name", "department"])
-    return {"persons": persons, "topics": topics,
+    clients = pd.DataFrame([(f"C_{k}", v[0], ",".join(v[1]), v[2]) for k, v in CLIENTS.items()],
+                           columns=["client_id", "name", "countries", "account_manager"])
+    # hidden ground truth, ONLY for evaluation (never a model feature)
+    truth_df = pd.DataFrame({"doc_id": df.doc_id, "states_current_value": [int(not truth[d]) for d in df.doc_id]})
+    return {"persons": persons, "topics": topics, "clients": clients, "ground_truth": truth_df,
             "documents": df.drop(columns="age_days_"), "edges": edges, "feedback": pd.DataFrame(fb)}
 
 
@@ -395,6 +485,8 @@ def load_graph():
         g.add_node(r.pop("person_id"), ntype="Person", **r)
     for r in topics.to_dict("records"):
         g.add_node(r.pop("topic_id"), ntype="Topic", **r)
+    for r in pd.read_csv(DATA_DIR / "clients.csv").to_dict("records"):
+        g.add_node(r.pop("client_id"), ntype="Client", **r)
     for r in docs.to_dict("records"):
         r["last_modified"] = pd.Timestamp(r["last_modified"])
         r["created"] = pd.Timestamp(r["created"])

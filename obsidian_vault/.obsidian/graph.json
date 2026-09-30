@@ -1,0 +1,50 @@
+{
+  "showTags": false,
+  "showOrphans": true,
+  "nodeSizeMultiplier": 1.3,
+  "linkDistance": 120,
+  "colorGroups": [
+    {
+      "query": "tag:#groen",
+      "color": {
+        "a": 1,
+        "rgb": 3055195
+      }
+    },
+    {
+      "query": "tag:#geel",
+      "color": {
+        "a": 1,
+        "rgb": 14723072
+      }
+    },
+    {
+      "query": "tag:#rood",
+      "color": {
+        "a": 1,
+        "rgb": 14042437
+      }
+    },
+    {
+      "query": "tag:#persoon",
+      "color": {
+        "a": 1,
+        "rgb": 4881360
+      }
+    },
+    {
+      "query": "tag:#onderwerp",
+      "color": {
+        "a": 1,
+        "rgb": 9067714
+      }
+    },
+    {
+      "query": "tag:#klant",
+      "color": {
+        "a": 1,
+        "rgb": 14711592
+      }
+    }
+  ]
+}
